@@ -1,0 +1,9 @@
+.venv/
+out/
+checkpoints/
+volume_cache/
+metadata.json
+nine_um_ready.json
+*.tif
+*.npy
+__pycache__/

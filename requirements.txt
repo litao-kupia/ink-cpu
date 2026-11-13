@@ -1,0 +1,11 @@
+# CPU-only runtime. Install torch from the CPU wheel index to avoid pulling CUDA:
+#   uv pip install torch --index-url https://download.pytorch.org/whl/cpu
+torch>=2.12
+numpy>=2.0
+tifffile>=2024.8.30
+pillow>=10.1
+requests>=2.31
+
+# only needed for the label/validation helpers
+# huggingface_hub>=0.35
+# numcodecs>=0.13
