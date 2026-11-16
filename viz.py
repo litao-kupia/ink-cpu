@@ -34,9 +34,27 @@ def preview(src: Path, *, max_side: int = 1600, box: tuple[int, int, int, int] |
     return out
 
 
+def grid(src: Path, cols: int = 4, rows: int = 3) -> None:
+    """Write native-resolution tiles so a big prediction can actually be read."""
+    a = np.clip((tifffile.imread(src).astype(np.float32) / 255.0 - 0.25) / 0.5, 0, 1)
+    h, w = a.shape
+    outdir = src.parent / (src.stem + "_tiles")
+    outdir.mkdir(exist_ok=True)
+    for r in range(rows):
+        for c in range(cols):
+            y0, y1 = r * h // rows, (r + 1) * h // rows
+            x0, x1 = c * w // cols, (c + 1) * w // cols
+            path = outdir / f"r{r}c{c}.png"
+            Image.fromarray((a[y0:y1, x0:x1] * 255).astype(np.uint8)).save(path)
+    print(f"wrote {cols * rows} tiles to {outdir}")
+
+
 if __name__ == "__main__":
     src = Path(sys.argv[1])
-    if len(sys.argv) > 2:
+    if len(sys.argv) > 2 and sys.argv[2] == "--grid":
+        grid(src, int(sys.argv[3]) if len(sys.argv) > 3 else 4,
+             int(sys.argv[4]) if len(sys.argv) > 4 else 3)
+    elif len(sys.argv) > 2:
         y0, y1, x0, x1 = (int(v) for v in sys.argv[2].split(","))
         preview(src, box=(y0, y1, x0, x1))
     else:

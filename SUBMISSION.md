@@ -41,6 +41,22 @@ Full segment, 5820×5240, 7 290 tiles at 18.8 tiles/s on a 24-core desktop, no G
 tiling seams. This is the expected control: the pipeline is faithful enough to reproduce
 legible text on a segment the models know.
 
+### Used for real: PHerc0009B, an unread scroll
+
+To check that this is not just a benchmark tool, it was run on a scroll where nothing has
+been read. PHerc0009B publishes 18 2.4 µm renders; segment `20250510172639` was processed
+end to end: 1 862 MB downloaded, level-2 pooled to 21 slices, 4 104 tiles at 18 tiles/s,
+**231 s**, full 4630×3690 prediction.
+
+Result: **no legible letterforms**, in either depth direction. The prediction is texture
+and noise; the reverse-direction control on a 1200×1200 region likewise shows blobs only.
+That is a negative result, recorded rather than dressed up.
+
+It does demonstrate the thing that was previously impractical: a person with a desktop CPU
+and no build toolchain can take an unread scroll, and inside ten minutes have a
+full-segment ink prediction to look at. Whether that prediction contains text depends on
+the segment, the surface, and the model — as it does for everyone.
+
 ### Second check: PHerc0500P2 fragment
 
 This fragment is the only non-training sample with a full set of published ≈9.36 µm
@@ -58,22 +74,26 @@ reference than about the pipeline. This segment is therefore **not** offered as 
 correctness check — the w035 result above is the evidence.
 
 
-### Data availability survey
+### 2.4 µm coverage and its validation
 
-`scan_all_9um.py` walks all 328 traced segments across 45 scrolls and reports which ones
-already publish an ≈9.36 µm surface volume — i.e. which can be run *today* without first
-rendering a surface with `vc_render_tifxyz`.
+Most scrolls do not publish a 9 µm render, but many publish a 2.4 µm render that pools
+exactly into the representation the models were trained on. `--level 2 --z-pool 4`
+reproduces `prepare_9um_isotropic_input` in memory: centre-crop Z to 84 planes (13..96),
+average each group of four with round-half-to-even, giving 21 slices.
 
-| scroll | traced segments | with ≈9.36 µm render |
+Validated on w035 against the native 9.36 µm render: same letters, **Pearson r = 0.73**
+over a 1200×1200 region. That is the check that makes the 2.4 µm path trustworthy.
+
+This roughly doubles usable coverage:
+
+| representation | segments | scrolls |
 | --- | --- | --- |
-| PHerc0500P2 | 46 | 46 (fragment) |
-| PHerc0139 | 39 | 38 (training) |
-| PHerc0814 | 19 | 19 (training) |
-| PHerc0841 | 3 | 3 |
+| native ≈9.4 µm | 106 | PHerc0139, PHerc0814, PHerc0841, PHerc0500P2 |
+| 2.4 µm + level-2 pool | 196 | PHerc. Paris. 4 (80), PHerc0139 (38), PHerc1667 (38), PHerc0814 (19), PHerc0009B (18), PHerc0841 (3) |
 
-Everything else — including PHerc1667 and PHerc. Paris. 4 — publishes none. That is worth
-saying out loud, because it reframes the First Letters workflow: for a fresh scroll the
-first step is still a render, and only then does the model run.
+It is also what makes PHerc1667 and PHerc. Paris. 4 reachable, since neither publishes a
+9 µm render.
+
 
 ## Throughput
 

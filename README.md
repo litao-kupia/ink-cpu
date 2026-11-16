@@ -8,6 +8,9 @@ The official flat-inference path (`vesuvius.ink_detection.inference.infer`) need
 NVIDIA GPU. This tool reproduces the same preprocessing and blending in ~200 lines of
 Python so anyone with a desktop CPU can run the shared checkpoints on real scroll data.
 
+Originally built for the November 2026 progress prize round; `SUBMISSION.md` records the
+measurements and results on real scrolls.
+
 ## What it does
 
 1. Streams a published surface-volume OME-Zarr straight from the open-data bucket
@@ -42,6 +45,23 @@ python ink_cpu.py \
 depth window backwards, which matters when you do not know which side of the surface
 volume faces the ink. `--overlap` defaults to `0.5`.
 
+### 2.4 µm surface volumes
+
+For the many segments that only publish a 2.4 µm render, read pyramid level 2 and pool
+the depth axis with the released recipe (centre-crop to 21×4 planes, average each group
+of four, round to uint8):
+
+```bash
+python ink_cpu.py \
+  --zarr .../2.399um-<...>.zarr --level 2 --z-pool 4 \
+  --checkpoint checkpoints/hybrid_3d2d-seed42_step-075000.pth \
+  --villa-src ../villa/vesuvius/src \
+  --out out/segment.tif
+```
+
+This reproduces `vesuvius.ink_detection.preprocessing.prepare_9um_isotropic_input`
+without writing an intermediate Zarr.
+
 Checkpoints come from [`scrollprize/ink_9um`](https://huggingface.co/scrollprize/ink_9um):
 
 ```bash
@@ -58,6 +78,10 @@ Intel Core Ultra 9 285K (24 cores, 127 GB RAM, no GPU), `torch 2.13.0+cpu`,
 | 256×256 ROI | 9 | 0.5 s | — |
 | w035 full segment (5820×5240) | 7 290 | 388 s | 18.8 tile/s |
 | PHerc0500P2 segment (4520×3120) | 3 360 | 186 s | 18.0 tile/s |
+| w035 ROI via 2.4 µm level-2 + pooling | 324 | 18.3 s | 17.7 tile/s |
+
+Downloading is the slow part: 854 MB for a native 9.4 µm render, 3.1 GB for a 2.4 µm
+render at level 2 (both cached, both about two to five minutes with 32 workers).
 
 Downloading the w035 volume (854 MB, 1 623/1 886 chunks) from S3 takes about two minutes
 with 32 workers and is cached for re-runs.
@@ -79,25 +103,22 @@ python viz.py out/w035.tif
 
 ## Which scrolls are ready to run
 
-A surface volume is not published for every traced segment, and rendering one needs
-`vc_render_tifxyz`. `scan_all_9um.py` walks the open-data catalog: of **328 traced
-segments across 45 scrolls, only four scrolls publish an ≈9.36 µm render**.
+`scan_surface_volumes.py` walks every traced segment in the open-data catalog and records
+which surface volumes are published, by resolution. Of **328 traced segments across 45
+scrolls**, two paths are usable today:
 
-| scroll | traced segments | with ≈9.36 µm render | note |
-| --- | --- | --- | --- |
-| PHerc0500P2 | 46 | 46 | fragment, not a sealed scroll |
-| PHerc0139 | 39 | 38 | training scroll |
-| PHerc0814 | 19 | 19 | training scroll |
-| PHerc0841 | 3 | 3 | |
+| representation | segments | scrolls |
+| --- | --- | --- |
+| native ≈9.4 µm render | 106 | PHerc0139 (38), PHerc0814 (19), PHerc0841 (3), PHerc0500P2 (46) |
+| 2.4 µm render, `--level 2 --z-pool 4` | 196 | PHerc. Paris. 4 (80), PHerc0139 (38), PHerc1667 (38), PHerc0814 (19), PHerc0009B (18), PHerc0841 (3) |
 
-PHerc1667 and PHerc. Paris. 4 — the two most-read scrolls — publish no 9.36 µm render at
-all; their 9 µm representations are pooled from 2.4 µm volumes.
+The 2.4 µm path is what unlocks the two most-read scrolls: neither PHerc1667 nor
+PHerc. Paris. 4 publishes a 9 µm render, but both publish 2.4 µm renders that pool
+exactly into the representation the models were trained on.
 
-The practical consequence: for a First Letters attempt on a scroll nobody has read, the
-first step is still producing a surface volume (`vc_render_tifxyz`, which streams the
-scroll straight from S3). This tool takes over from there. PHerc0500P2, being a fragment
-with 46 ready segments and published team predictions, is the natural place to validate a
-pipeline end to end.
+Everything else — 7.9 µm DLS-era scans, 8.64 µm renders, unrendered segments — is not
+directly usable without a re-render.
+
 
 
 ## Caveats

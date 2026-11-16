@@ -195,6 +195,44 @@ def sliding_positions(length: int, patch: int, stride: int) -> list[int]:
 # inference
 # --------------------------------------------------------------------------- #
 
+def pool_depth(
+    volume: np.ndarray,
+    *,
+    pool: int = 4,
+    out_z: int = 21,
+    block: int = 512,
+) -> np.ndarray:
+    """Reproduce `prepare_9um_isotropic_input.prepare_isotropic_input`.
+
+    Centre-crop the Z axis to `out_z * pool` planes, then average each group of
+    `pool` planes with round-half-to-even, giving `out_z` slices. This is how the
+    released 9 um models turn a 2.4 um surface volume (read at pyramid level 2)
+    into the representation they were trained on.
+    """
+    import math
+
+    depth, height, width = volume.shape
+    need = out_z * pool
+    if depth < need:
+        raise SystemExit(
+            f"cannot pool {depth} planes into {out_z}x{pool} = {need} planes"
+        )
+    z0 = math.ceil((depth - need) / 2)
+    src = volume[z0:z0 + need]
+    print(f"pooling Z: {depth} planes -> {out_z} slices "
+          f"(source planes {z0}..{z0 + need - 1}, mean of {pool})")
+
+    out = np.empty((out_z, height, width), dtype=np.uint8)
+    for y0 in range(0, height, block):
+        y1 = min(height, y0 + block)
+        for x0 in range(0, width, block):
+            x1 = min(width, x0 + block)
+            block_zyx = np.asarray(src[:, y0:y1, x0:x1], dtype=np.float32)
+            block_zyx = block_zyx.reshape(out_z, pool, y1 - y0, x1 - x0)
+            out[:, y0:y1, x0:x1] = np.rint(block_zyx.mean(axis=1)).astype(np.uint8)
+    return out
+
+
 def build_model(checkpoint_path: Path, villa_src: str | None):
     """Rebuild the checkpoint's model from the villa source tree.
 
@@ -347,6 +385,10 @@ def main(argv=None) -> int:
     ap.add_argument("--level", type=int, default=0)
     ap.add_argument("--villa-src", default=None,
                     help="path to <villa>/vesuvius/src (or set VILLA_SRC)")
+    ap.add_argument("--z-pool", type=int, default=1,
+                    help="mean-pool this many depth planes (4 for 2.4 um level-2 renders)")
+    ap.add_argument("--pooled-z", type=int, default=21,
+                    help="slices produced by --z-pool (the 9 um recipe uses 21)")
     args = ap.parse_args(argv)
 
     zarr = args.zarr
@@ -355,12 +397,15 @@ def main(argv=None) -> int:
     if zarr.startswith("http"):
         base = zarr.rstrip("/")
         name = base.split("/")[-1] or "volume"
-        cache = Path(args.cache_dir) / name / "volume.u8"
+        cache = Path(args.cache_dir) / name / f"volume.level{args.level}.u8"
         volume = materialise_volume(base, cache, level=args.level,
                                     workers=args.workers)
     else:
         import zarr
         volume = zarr.open(args.zarr, mode="r")[str(args.level)]
+
+    if args.z_pool > 1:
+        volume = pool_depth(volume, pool=args.z_pool, out_z=args.pooled_z)
 
     model, patch, input_depth = build_model(Path(args.checkpoint), args.villa_src)
     roi = tuple(int(v) for v in args.roi.split(",")) if args.roi else None
