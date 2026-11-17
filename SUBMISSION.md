@@ -41,25 +41,36 @@ Full segment, 5820×5240, 7 290 tiles at 18.8 tiles/s on a 24-core desktop, no G
 tiling seams. This is the expected control: the pipeline is faithful enough to reproduce
 legible text on a segment the models know.
 
-### Used for real: PHerc0009B, an unread scroll
+### Used for real: screening two unread scrolls
 
-To check that this is not just a benchmark tool, it was run on a scroll where nothing has
-been read. PHerc0009B publishes 18 2.4 µm renders, and **all 18 traced segments were
-screened**: 121 383 tiles, 115 minutes of inference, ≈50 GB streamed from S3.
+The tool was pointed at scrolls where nothing has been read, to answer a question that only
+matters if it is asked on unseen data: does the released cross-scroll model actually fire
+there?
 
-Segment-level scores were flat and low across the whole scroll — `frac>0.6` between
-0.0154 and 0.0451, p99 between 0.638 and 0.756. No segment stood out. Inspecting the top
-two at native resolution resolved the apparent letterforms into blobs and papyrus weave,
-not strokes.
+| scroll | segments | tiles | `frac>0.6` range |
+| --- | --- | --- | --- |
+| PHerc0009B | 18 (2.4 µm, level-2 pooled) | 121 383 | 0.0154 – 0.0451 |
+| PHerc0841 | 3 (native 9.37 µm) | 14 474 | 0.0307 – 0.0436 |
 
-Result: **no legible text in any of the 18 segments**, in either depth direction. That is
-a negative result, recorded rather than dressed up.
+115 minutes of inference for PHerc0009B, about 13 for PHerc0841, 56.6 GB streamed from S3
+in total. Both scrolls behave identically: flat, low scores with no segment standing out,
+and native-resolution inspection turns the apparent letterforms into blobs and papyrus
+weave rather than strokes. The best PHerc0009B segment was re-run with the two-seed
+ensemble and a +1 depth offset; it stayed flat.
 
-Two things are worth separating. The workflow works: a desktop CPU, no build toolchain, a
-full scroll screened in about two hours. The scroll itself appears empty in the regions
-these `auto_grown` meshes cover — which is a statement about PHerc0009B, not about the
-tool. It is also why `sweep.py` exists: the point is to make "is there anything here?"
-cheap enough to answer across a whole scroll instead of one segment at a time.
+Result: **no legible text in 21 segments across two unread scrolls.**
+
+That is a negative result and it is reported as one. It is also the most useful thing in
+this submission: it puts numbers on the cross-scroll generalisation bottleneck the project
+lists in its own open problems. The model renders text cleanly on a scroll it was trained
+on (w035, above) and produces structure but no strokes on two it was not. A better runner
+does not fix that; the pseudo-labelling loop that produced PHerc. 1667 does, and it needs
+segments worth labelling.
+
+What this tool contributes to that loop is cost: screening a whole scroll is now two hours
+on a desktop CPU instead of a GPU job, so "is there anything here?" can be answered before
+committing to a labelling effort.
+
 
 
 ### Second check: PHerc0500P2 fragment
