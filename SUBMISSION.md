@@ -56,7 +56,9 @@ there?
 in total. Both scrolls behave identically: flat, low scores with no segment standing out,
 and native-resolution inspection turns the apparent letterforms into blobs and papyrus
 weave rather than strokes. The best PHerc0009B segment was re-run with the two-seed
-ensemble and a +1 depth offset; it stayed flat.
+ensemble and a +1 depth offset; it stayed flat, and `frac>0.6` *fell* to 0.0298 — averaging
+made it less confident, not more, which is what happens when there is no signal to
+reinforce.
 
 Result: **no legible text in 21 segments across two unread scrolls.**
 
