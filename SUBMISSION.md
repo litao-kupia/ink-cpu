@@ -44,18 +44,23 @@ legible text on a segment the models know.
 ### Used for real: PHerc0009B, an unread scroll
 
 To check that this is not just a benchmark tool, it was run on a scroll where nothing has
-been read. PHerc0009B publishes 18 2.4 µm renders; segment `20250510172639` was processed
-end to end: 1 862 MB downloaded, level-2 pooled to 21 slices, 4 104 tiles at 18 tiles/s,
-**231 s**, full 4630×3690 prediction.
+been read. PHerc0009B publishes 18 2.4 µm renders, and **all 18 traced segments were
+screened**: 121 383 tiles, 115 minutes of inference, ≈50 GB streamed from S3.
 
-Result: **no legible letterforms**, in either depth direction. The prediction is texture
-and noise; the reverse-direction control on a 1200×1200 region likewise shows blobs only.
-That is a negative result, recorded rather than dressed up.
+Segment-level scores were flat and low across the whole scroll — `frac>0.6` between
+0.0154 and 0.0451, p99 between 0.638 and 0.756. No segment stood out. Inspecting the top
+two at native resolution resolved the apparent letterforms into blobs and papyrus weave,
+not strokes.
 
-It does demonstrate the thing that was previously impractical: a person with a desktop CPU
-and no build toolchain can take an unread scroll, and inside ten minutes have a
-full-segment ink prediction to look at. Whether that prediction contains text depends on
-the segment, the surface, and the model — as it does for everyone.
+Result: **no legible text in any of the 18 segments**, in either depth direction. That is
+a negative result, recorded rather than dressed up.
+
+Two things are worth separating. The workflow works: a desktop CPU, no build toolchain, a
+full scroll screened in about two hours. The scroll itself appears empty in the regions
+these `auto_grown` meshes cover — which is a statement about PHerc0009B, not about the
+tool. It is also why `sweep.py` exists: the point is to make "is there anything here?"
+cheap enough to answer across a whole scroll instead of one segment at a time.
+
 
 ### Second check: PHerc0500P2 fragment
 

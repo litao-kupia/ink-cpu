@@ -49,7 +49,7 @@ def open_remote_volume(base_url: str, level: int = 0) -> dict:
 
 
 def _fetch_chunk(session: requests.Session, url: str) -> bytes:
-    for attempt in range(4):
+    for attempt in range(6):
         try:
             r = session.get(url, timeout=120)
             if r.status_code == 404:  # sparse chunk: all fill_value
@@ -57,9 +57,9 @@ def _fetch_chunk(session: requests.Session, url: str) -> bytes:
             r.raise_for_status()
             return r.content
         except Exception:
-            if attempt == 3:
+            if attempt == 5:
                 raise
-            time.sleep(0.5 * (attempt + 1))
+            time.sleep(min(8.0, 0.5 * (2 ** attempt)))
     raise RuntimeError("unreachable")
 
 

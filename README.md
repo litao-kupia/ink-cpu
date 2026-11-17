@@ -99,6 +99,32 @@ judging them. `viz.py` does that and writes PNG previews:
 
 ```bash
 python viz.py out/w035.tif
+python viz.py out/w035.tif --grid 3 3      # native-resolution tiles, easier to read
+```
+
+## Hunting harder: ensembles, TTA, depth offsets
+
+Weak predictions are usually a model or depth problem, not a threshold problem. The tool
+can average checkpoints, average the four axis mirrors, and shift the depth window:
+
+```bash
+python ink_cpu.py \
+  --checkpoint checkpoints/hybrid_3d2d-seed42_step-075000.pth \
+               checkpoints/hybrid_3d2d-seed43_step-075000.pth \
+  --tta-mirror --layer-offset 1 \
+  --zarr ... --level 2 --z-pool 4 --out out/segment.tif
+```
+
+`--layer-offset` shifts the 17-slice window inside the volume. The released models were
+trained with a ±2-plane jitter of that window, so ±2 is the meaningful range.
+
+`sweep.py` screens every segment of a scroll with one model, records `p99` and
+`frac>0.6` per segment into a JSON summary, and ranks them — so the expensive
+ensemble/TTA runs go only to the promising segments:
+
+```bash
+python sweep.py --scroll PHerc0009B --res 2.401 \
+  --checkpoint checkpoints/hybrid_3d2d-seed42_step-075000.pth --out-dir out/sweep
 ```
 
 ## Which scrolls are ready to run

@@ -78,18 +78,27 @@ def main() -> int:
         vol_name = url.split("/")[-1] or "volume"
         cache = (Path.home() / ".cache" / "ink-cpu" / vol_name /
                  f"volume.level{args.level}.u8")
-        volume = ink_cpu.materialise_volume(url, cache, level=args.level, workers=32)
-        if args.z_pool > 1:
-            volume = ink_cpu.pool_depth(volume, pool=args.z_pool)
+        try:
+            volume = ink_cpu.materialise_volume(url, cache, level=args.level,
+                                                workers=32)
+            if args.z_pool > 1:
+                volume = ink_cpu.pool_depth(volume, pool=args.z_pool)
 
-        result, stats = ink_cpu.run(
-            volume, models, patch=patch, input_depth=depth,
-            overlap=0.5, batch_size=args.batch_size,
-            reverse_depth=args.direction == "reverse",
-            roi=None, threads=args.threads,
-            layer_offset=args.layer_offset, tta_mirror=args.tta_mirror,
-            progress_every=100000,
-        )
+            result, stats = ink_cpu.run(
+                volume, models, patch=patch, input_depth=depth,
+                overlap=0.5, batch_size=args.batch_size,
+                reverse_depth=args.direction == "reverse",
+                roi=None, threads=args.threads,
+                layer_offset=args.layer_offset, tta_mirror=args.tta_mirror,
+                progress_every=100000,
+            )
+        except Exception as exc:  # a bad chunk or a flaky connection must not kill the sweep
+            print(f"[{i}/{len(items)}] {name}: FAILED {type(exc).__name__}: {exc}",
+                  flush=True)
+            continue
+        finally:
+            volume = None
+
         tifffile.imwrite(tif, np.clip(result * 255.0, 0, 255).astype(np.uint8))
         row = {"segment": seg, "volume": url, "name": name, **stats,
                "wall_seconds": round(time.time() - t0, 1),
@@ -97,8 +106,8 @@ def main() -> int:
         meta.write_text(json.dumps(row, indent=1))
         rows.append(row)
         print(f"[{i}/{len(items)}] {name}: p99={stats['p99']:.3f} "
-              f"frac>0.6={stats['frac_gt_0.6']:.4f} {stats['seconds']:.0f}s")
-        del volume
+              f"frac>0.6={stats['frac_gt_0.6']:.4f} {stats['seconds']:.0f}s",
+              flush=True)
 
     rows.sort(key=lambda r: -r["frac_gt_0.6"])
     summary = out_dir / f"summary_{args.direction}_off{args.layer_offset}.json"
