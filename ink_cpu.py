@@ -276,8 +276,7 @@ def build_model(checkpoint_path: Path, villa_src: str | None):
 
 def run(
     volume: np.ndarray,
-    model,
-    checkpoint_path: Path,
+    models,
     *,
     patch: int,
     input_depth: int,
@@ -286,6 +285,8 @@ def run(
     reverse_depth: bool,
     roi: tuple[int, int, int, int] | None,
     threads: int,
+    layer_offset: int = 0,
+    tta_mirror: bool = False,
     progress_every: int = 50,
 ) -> tuple[np.ndarray, dict]:
     import torch
@@ -298,9 +299,12 @@ def run(
     y0, y1, x0, x1 = roi or (0, height, 0, width)
     roi_h, roi_w = y1 - y0, x1 - x0
 
-    # centre-crop the depth window the checkpoint expects (infer.select_layer_indices)
+    # centre-crop the depth window the checkpoint expects (infer.select_layer_indices),
+    # then shift it: the models jittered this window during training and are sensitive
+    # to where the surface sits inside it.
     if input_depth < depth:
-        start = depth // 2 - input_depth // 2
+        start = depth // 2 - input_depth // 2 + layer_offset
+        start = max(0, min(start, depth - input_depth))
         layers = np.arange(start, start + input_depth)
     else:
         layers = np.arange(depth)
@@ -337,14 +341,33 @@ def run(
             tensors.append(torch.from_numpy(norm).unsqueeze(0))
             metas.append((yy, xx, valid_h, valid_w))
 
-        logits = model(torch.stack(tensors))
-        if isinstance(logits, dict):
-            logits = logits["ink"]
-        probs = logits.float().sigmoid()
-        if probs.shape[-2:] != (patch, patch):
-            probs = F.interpolate(probs, size=(patch, patch), mode="bilinear",
-                                  align_corners=False)
-        probs = probs.squeeze(1).numpy()
+        batch = torch.stack(tensors)
+        probs_acc = None
+        for model in models:
+            variants = [batch]
+            if tta_mirror:
+                # average the identity with the two axis mirrors and their product
+                variants = [batch, torch.flip(batch, [-1]), torch.flip(batch, [-2]),
+                            torch.flip(batch, [-2, -1])]
+            model_probs = None
+            for v, tensor in enumerate(variants):
+                logits = model(tensor)
+                if isinstance(logits, dict):
+                    logits = logits["ink"]
+                p = logits.float().sigmoid()
+                if p.shape[-2:] != (patch, patch):
+                    p = F.interpolate(p, size=(patch, patch), mode="bilinear",
+                                      align_corners=False)
+                if v == 1:
+                    p = torch.flip(p, [-1])
+                elif v == 2:
+                    p = torch.flip(p, [-2])
+                elif v == 3:
+                    p = torch.flip(p, [-2, -1])
+                model_probs = p if model_probs is None else model_probs + p
+            model_probs = model_probs / float(len(variants))
+            probs_acc = model_probs if probs_acc is None else probs_acc + model_probs
+        probs = (probs_acc / float(len(models))).squeeze(1).numpy()
 
         for p, (yy, xx, vh, vw) in zip(probs, metas):
             prob_sum[yy:yy + vh, xx:xx + vw] += p[:vh, :vw] * weight[:vh, :vw]
@@ -365,6 +388,13 @@ def run(
         "patch": patch,
         "stride": stride,
         "depth_layers": [int(layers[0]), int(layers[-1])],
+        "layer_offset": int(layer_offset),
+        "models": len(models),
+        "tta_mirror": bool(tta_mirror),
+        "p50": round(float(np.median(out)), 4),
+        "p99": round(float(np.percentile(out, 99)), 4),
+        "p999": round(float(np.percentile(out, 99.9)), 4),
+        "frac_gt_0.6": round(float((out > 0.6).mean()), 5),
     }
     return out, stats
 
@@ -373,7 +403,8 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--zarr", required=True,
                     help="surface-volume zarr: https://..., s3://..., or local path")
-    ap.add_argument("--checkpoint", required=True)
+    ap.add_argument("--checkpoint", required=True, nargs="+",
+                    help="one or more checkpoints; averaged as an ensemble")
     ap.add_argument("--out", required=True, help="output TIFF (uint8 0-255)")
     ap.add_argument("--cache-dir", default=str(Path.home() / ".cache" / "ink-cpu"))
     ap.add_argument("--overlap", type=float, default=0.5)
@@ -389,6 +420,10 @@ def main(argv=None) -> int:
                     help="mean-pool this many depth planes (4 for 2.4 um level-2 renders)")
     ap.add_argument("--pooled-z", type=int, default=21,
                     help="slices produced by --z-pool (the 9 um recipe uses 21)")
+    ap.add_argument("--layer-offset", type=int, default=0,
+                    help="shift the depth window by this many slices")
+    ap.add_argument("--tta-mirror", action="store_true",
+                    help="average the four axis mirrors of each patch")
     args = ap.parse_args(argv)
 
     zarr = args.zarr
@@ -407,21 +442,34 @@ def main(argv=None) -> int:
     if args.z_pool > 1:
         volume = pool_depth(volume, pool=args.z_pool, out_z=args.pooled_z)
 
-    model, patch, input_depth = build_model(Path(args.checkpoint), args.villa_src)
+    models = []
+    patch = input_depth = None
+    for ckpt in args.checkpoint:
+        model, ck_patch, ck_depth = build_model(Path(ckpt), args.villa_src)
+        if patch is not None and (ck_patch, ck_depth) != (patch, input_depth):
+            raise SystemExit("checkpoints disagree on patch size or input depth")
+        patch, input_depth = ck_patch, ck_depth
+        models.append(model)
+    print(f"ensemble: {len(models)} checkpoint(s), tta_mirror={args.tta_mirror}")
+
     roi = tuple(int(v) for v in args.roi.split(",")) if args.roi else None
 
     result, stats = run(
-        volume, model, Path(args.checkpoint),
+        volume, models,
         patch=patch, input_depth=input_depth,
         overlap=args.overlap, batch_size=args.batch_size,
         reverse_depth=args.direction == "reverse",
         roi=roi, threads=args.threads,
+        layer_offset=args.layer_offset,
+        tta_mirror=args.tta_mirror,
     )
 
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     import tifffile
     tifffile.imwrite(out_path, np.clip(result * 255.0, 0, 255).astype(np.uint8))
+    out_path.with_suffix(".json").write_text(json.dumps(
+        {**stats, "zarr": args.zarr, "checkpoints": args.checkpoint}, indent=1))
     print(f"wrote {out_path}  {result.shape}  {json.dumps(stats)}")
     return 0
 
