@@ -39,9 +39,10 @@ Two concrete consequences:
 
 Running the shared cross-scroll ink models on ordinary hardware, against published surface
 volumes, as a single command — and therefore screening a scroll end to end before
-committing to pseudo-labelling. It also quantifies the cross-scroll generalisation
-bottleneck: on 21 segments across two unread scrolls the released model produces structure
-but no strokes, while rendering text cleanly on a scroll it trained on (w035).
+committing to pseudo-labelling. It also produced a recorded negative on 21 segments across
+two unread scrolls, with the per-segment numbers, rather than an anecdotal "it didn't
+work" (and with the caveat that most of those segments are `auto_grown` meshes, so it is
+partly a statement about segment quality).
 
 **(4) What evidence have you provided?**
 

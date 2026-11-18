@@ -62,14 +62,15 @@ reinforce.
 
 Result: **no legible text in 21 segments across two unread scrolls.**
 
-That is a negative result and it is reported as one. It is also the most useful thing in
-this submission: it puts numbers on the cross-scroll generalisation bottleneck the project
-lists in its own open problems. The model renders text cleanly on a scroll it was trained
-on (w035, above) and produces structure but no strokes on two it was not. A better runner
-does not fix that; the pseudo-labelling loop that produced PHerc. 1667 does, and it needs
-segments worth labelling.
+That is a negative result and it is reported as one. It also comes with a caveat that
+matters: 15 of the 18 PHerc0009B segments are `auto_grown` debug meshes, so flat output
+there is partly a statement about segment quality, not only about the model. The three
+segments that are not `auto_grown` were flat too, but three is thin evidence. What can be
+said safely is narrower than "the model does not generalise": on these particular traced
+surfaces, it produced structure and no strokes, and the ensemble reduced rather than
+raised its confidence.
 
-What this tool contributes to that loop is cost: screening a whole scroll is now two hours
+The cost result is not affected by that caveat. Screening a whole scroll is now two hours
 on a desktop CPU instead of a GPU job, so "is there anything here?" can be answered before
 committing to a labelling effort.
 
