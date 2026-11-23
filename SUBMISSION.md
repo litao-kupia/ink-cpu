@@ -137,3 +137,5 @@ Downloading 854 MB of volume from S3 takes about two minutes with 32 workers and
 
 Code: <!-- repo link -->
 Licence: MIT. Model weights and data remain under their published terms.
+
+Filed: November 2026 Progress Prize round, 2026-11-23. Repository state at filing is tagged `submission-nov-2026`.
